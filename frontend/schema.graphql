@@ -1,0 +1,64 @@
+directive @goModel(model: String, models: [String!]) on OBJECT | INPUT_OBJECT | SCALAR | ENUM | INTERFACE | UNION
+
+enum OrderDirection {
+  ASC
+  DESC
+}
+
+type Query {
+  node(id: ID!): Node
+  nodes(ids: [ID!]!): [Node]!
+  users(after: Cursor, first: Int, before: Cursor, last: Int, orderBy: UserOrder): UserConnection
+}
+
+type User implements Node {
+  id: ID!
+  username: String!
+}
+
+input UserOrder {
+  direction: OrderDirection!
+  field: UserOrderField
+}
+
+input CreateUserInput {
+  username: String!
+  password: String!
+}
+
+interface Node {
+  id: ID!
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+}
+
+type UserConnection {
+  totalCount: Int!
+  pageInfo: PageInfo!
+  edges: [UserEdge]
+}
+
+type UserEdge {
+  node: User!
+  cursor: Cursor!
+}
+
+""""""
+scalar Time
+
+""""""
+scalar Cursor
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: Cursor
+  endCursor: Cursor
+}
+
+enum UserOrderField {
+  CREATED_AT
+  USERNAME
+}

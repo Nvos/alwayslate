@@ -1,0 +1,44 @@
+type User implements Node {
+    id: ID!
+    username: String!
+}
+
+enum UserOrderField {
+    CREATED_AT
+    USERNAME
+}
+
+input UserOrder {
+    direction: OrderDirection!
+    field: UserOrderField
+}
+
+type UserConnection {
+    totalCount: Int!
+    pageInfo: PageInfo!
+    edges: [UserEdge]
+}
+
+type UserEdge {
+    node: User!
+    cursor: Cursor!
+}
+
+input CreateUserInput {
+    username: String!
+    password: String!
+}
+
+extend type Query {
+    users(
+        after: Cursor
+        first: Int
+        before: Cursor
+        last: Int
+        orderBy: UserOrder
+    ): UserConnection
+}
+
+extend type Mutation {
+    createUser(input: CreateUserInput!): User!
+}

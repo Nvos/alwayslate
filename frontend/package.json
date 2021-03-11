@@ -1,0 +1,43 @@
+{
+  "name": "frontend",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "serve": "vite preview",
+    "codegen": "graphql codegen",
+    "relay": "relay-compiler --src ./src --schema ./schema.graphql --language typescript --artifactDirectory ./src/__generated__"
+  },
+  "dependencies": {
+    "@rollup/plugin-commonjs": "^17.1.0",
+    "@rollup/plugin-replace": "^2.4.1",
+    "babel-plugin-relay": "^11.0.0",
+    "react": "^17.0.0",
+    "react-dom": "^17.0.0",
+    "react-relay": "^11.0.0",
+    "react-switch": "^6.0.0",
+    "relay-config": "^11.0.0",
+    "relay-runtime": "^11.0.0",
+    "rollup-plugin-node-builtins": "^2.1.2",
+    "rollup-plugin-node-globals": "^1.4.0"
+  },
+  "devDependencies": {
+    "@graphql-cli/codegen": "^1.17.21",
+    "@graphql-codegen/schema-ast": "^1.18.1",
+    "@rollup/plugin-babel": "^5.3.0",
+    "@types/react": "^17.0.0",
+    "@types/react-dom": "^17.0.0",
+    "@types/react-relay": "^7.0.17",
+    "@types/relay-runtime": "^10.1.9",
+    "@vitejs/plugin-react-refresh": "^1.3.1",
+    "babel-plugin-macros": "^3.0.1",
+    "graphql": "^15.5.0",
+    "graphql-cli": "^4.1.0",
+    "relay-compiler": "^11.0.0",
+    "relay-compiler-language-typescript": "^13.0.6",
+    "typescript": "^4.2.3",
+    "vite": "^2.0.5",
+    "vite-plugin-babel-macros": "^1.0.5"
+  },
+  "macro": {}
+}

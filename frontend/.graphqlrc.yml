@@ -1,0 +1,8 @@
+schema:
+  - http://localhost:8080/query
+extensions:
+  codegen:
+    generates:
+      ./schema.graphql:
+        plugins:
+          - schema-ast
