@@ -1,5 +1,6 @@
 package graph
 
+//go:generate go install github.com/99designs/gqlgen/cmd
 //go:generate go run github.com/99designs/gqlgen
 
 import "alwayslate/ent"

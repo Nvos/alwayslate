@@ -29,6 +29,11 @@ input CreateUserInput {
     password: String!
 }
 
+input UpdateUserInput {
+    id: ID!
+    password: String!
+}
+
 extend type Query {
     users(
         after: Cursor
@@ -41,4 +46,5 @@ extend type Query {
 
 extend type Mutation {
     createUser(input: CreateUserInput!): User!
+    updateUser(input: UpdateUserInput!): User!
 }

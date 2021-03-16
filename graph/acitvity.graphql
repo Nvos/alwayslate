@@ -1,0 +1,40 @@
+type Activity implements Node {
+    id: ID!
+    name: String!
+    timesheets: [Timesheet!]!
+    project: Project!
+}
+
+input CreateActivityInput {
+    projectId: ID!
+    name: String!
+}
+
+input ActivityOrder {
+    direction: OrderDirection!
+}
+
+type ActivityEdge {
+    node: Activity!
+    cursor: Cursor!
+}
+
+type ActivityConnection {
+    totalCount: Int!
+    pageInfo: PageInfo!
+    edges: [ActivityEdge!]!
+}
+
+extend type Mutation {
+    createActivity(input: CreateActivityInput!): Activity!
+}
+
+extend type Query {
+    activities(
+        after: Cursor
+        first: Int
+        before: Cursor
+        last: Int
+        orderBy: ActivityOrder
+    ): ActivityConnection!
+}

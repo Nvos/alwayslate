@@ -5,17 +5,16 @@ package graph
 
 import (
 	"alwayslate/ent"
-	"alwayslate/ent/schema/pulid"
 	"alwayslate/graph/generated"
 	"context"
 )
 
-func (r *queryResolver) Node(ctx context.Context, id pulid.ID) (ent.Noder, error) {
-	return r.Client.Noder(ctx, id, ent.WithNodeType(ent.IDToType))
+func (r *queryResolver) Node(ctx context.Context, id int) (ent.Noder, error) {
+	return r.Client.Debug().Noder(ctx, id)
 }
 
-func (r *queryResolver) Nodes(ctx context.Context, ids []pulid.ID) ([]ent.Noder, error) {
-	return r.Client.Noders(ctx, ids, ent.WithNodeType(ent.IDToType))
+func (r *queryResolver) Nodes(ctx context.Context, ids []int) ([]ent.Noder, error) {
+	return r.Client.Debug().Noders(ctx, ids)
 }
 
 // Mutation returns generated.MutationResolver implementation.

@@ -8,12 +8,15 @@ import (
 	"log"
 
 	"alwayslate/ent/migrate"
-	"alwayslate/ent/schema/pulid"
 
+	"alwayslate/ent/activity"
+	"alwayslate/ent/project"
+	"alwayslate/ent/timesheet"
 	"alwayslate/ent/user"
 
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 )
 
 // Client is the client that holds all ent builders.
@@ -21,8 +24,16 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// Activity is the client for interacting with the Activity builders.
+	Activity *ActivityClient
+	// Project is the client for interacting with the Project builders.
+	Project *ProjectClient
+	// Timesheet is the client for interacting with the Timesheet builders.
+	Timesheet *TimesheetClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// additional fields for node api
+	tables tables
 }
 
 // NewClient creates a new client configured with the given options.
@@ -36,6 +47,9 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.Activity = NewActivityClient(c.config)
+	c.Project = NewProjectClient(c.config)
+	c.Timesheet = NewTimesheetClient(c.config)
 	c.User = NewUserClient(c.config)
 }
 
@@ -63,14 +77,17 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	}
 	tx, err := newTx(ctx, c.driver)
 	if err != nil {
-		return nil, fmt.Errorf("ent: starting a transaction: %v", err)
+		return nil, fmt.Errorf("ent: starting a transaction: %w", err)
 	}
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		User:   NewUserClient(cfg),
+		ctx:       ctx,
+		config:    cfg,
+		Activity:  NewActivityClient(cfg),
+		Project:   NewProjectClient(cfg),
+		Timesheet: NewTimesheetClient(cfg),
+		User:      NewUserClient(cfg),
 	}, nil
 }
 
@@ -83,20 +100,23 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		BeginTx(context.Context, *sql.TxOptions) (dialect.Tx, error)
 	}).BeginTx(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("ent: starting a transaction: %v", err)
+		return nil, fmt.Errorf("ent: starting a transaction: %w", err)
 	}
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		config: cfg,
-		User:   NewUserClient(cfg),
+		config:    cfg,
+		Activity:  NewActivityClient(cfg),
+		Project:   NewProjectClient(cfg),
+		Timesheet: NewTimesheetClient(cfg),
+		User:      NewUserClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		User.
+//		Activity.
 //		Query().
 //		Count(ctx)
 //
@@ -119,7 +139,338 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.Activity.Use(hooks...)
+	c.Project.Use(hooks...)
+	c.Timesheet.Use(hooks...)
 	c.User.Use(hooks...)
+}
+
+// ActivityClient is a client for the Activity schema.
+type ActivityClient struct {
+	config
+}
+
+// NewActivityClient returns a client for the Activity from the given config.
+func NewActivityClient(c config) *ActivityClient {
+	return &ActivityClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `activity.Hooks(f(g(h())))`.
+func (c *ActivityClient) Use(hooks ...Hook) {
+	c.hooks.Activity = append(c.hooks.Activity, hooks...)
+}
+
+// Create returns a create builder for Activity.
+func (c *ActivityClient) Create() *ActivityCreate {
+	mutation := newActivityMutation(c.config, OpCreate)
+	return &ActivityCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Activity entities.
+func (c *ActivityClient) CreateBulk(builders ...*ActivityCreate) *ActivityCreateBulk {
+	return &ActivityCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Activity.
+func (c *ActivityClient) Update() *ActivityUpdate {
+	mutation := newActivityMutation(c.config, OpUpdate)
+	return &ActivityUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ActivityClient) UpdateOne(a *Activity) *ActivityUpdateOne {
+	mutation := newActivityMutation(c.config, OpUpdateOne, withActivity(a))
+	return &ActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ActivityClient) UpdateOneID(id int) *ActivityUpdateOne {
+	mutation := newActivityMutation(c.config, OpUpdateOne, withActivityID(id))
+	return &ActivityUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Activity.
+func (c *ActivityClient) Delete() *ActivityDelete {
+	mutation := newActivityMutation(c.config, OpDelete)
+	return &ActivityDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a delete builder for the given entity.
+func (c *ActivityClient) DeleteOne(a *Activity) *ActivityDeleteOne {
+	return c.DeleteOneID(a.ID)
+}
+
+// DeleteOneID returns a delete builder for the given id.
+func (c *ActivityClient) DeleteOneID(id int) *ActivityDeleteOne {
+	builder := c.Delete().Where(activity.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ActivityDeleteOne{builder}
+}
+
+// Query returns a query builder for Activity.
+func (c *ActivityClient) Query() *ActivityQuery {
+	return &ActivityQuery{config: c.config}
+}
+
+// Get returns a Activity entity by its id.
+func (c *ActivityClient) Get(ctx context.Context, id int) (*Activity, error) {
+	return c.Query().Where(activity.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ActivityClient) GetX(ctx context.Context, id int) *Activity {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryTimesheets queries the timesheets edge of a Activity.
+func (c *ActivityClient) QueryTimesheets(a *Activity) *TimesheetQuery {
+	query := &TimesheetQuery{config: c.config}
+	query.path = func(ctx context.Context) (fromV *sql.Selector, _ error) {
+		id := a.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(activity.Table, activity.FieldID, id),
+			sqlgraph.To(timesheet.Table, timesheet.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, activity.TimesheetsTable, activity.TimesheetsColumn),
+		)
+		fromV = sqlgraph.Neighbors(a.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryProject queries the project edge of a Activity.
+func (c *ActivityClient) QueryProject(a *Activity) *ProjectQuery {
+	query := &ProjectQuery{config: c.config}
+	query.path = func(ctx context.Context) (fromV *sql.Selector, _ error) {
+		id := a.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(activity.Table, activity.FieldID, id),
+			sqlgraph.To(project.Table, project.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, activity.ProjectTable, activity.ProjectColumn),
+		)
+		fromV = sqlgraph.Neighbors(a.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ActivityClient) Hooks() []Hook {
+	return c.hooks.Activity
+}
+
+// ProjectClient is a client for the Project schema.
+type ProjectClient struct {
+	config
+}
+
+// NewProjectClient returns a client for the Project from the given config.
+func NewProjectClient(c config) *ProjectClient {
+	return &ProjectClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `project.Hooks(f(g(h())))`.
+func (c *ProjectClient) Use(hooks ...Hook) {
+	c.hooks.Project = append(c.hooks.Project, hooks...)
+}
+
+// Create returns a create builder for Project.
+func (c *ProjectClient) Create() *ProjectCreate {
+	mutation := newProjectMutation(c.config, OpCreate)
+	return &ProjectCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Project entities.
+func (c *ProjectClient) CreateBulk(builders ...*ProjectCreate) *ProjectCreateBulk {
+	return &ProjectCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Project.
+func (c *ProjectClient) Update() *ProjectUpdate {
+	mutation := newProjectMutation(c.config, OpUpdate)
+	return &ProjectUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ProjectClient) UpdateOne(pr *Project) *ProjectUpdateOne {
+	mutation := newProjectMutation(c.config, OpUpdateOne, withProject(pr))
+	return &ProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ProjectClient) UpdateOneID(id int) *ProjectUpdateOne {
+	mutation := newProjectMutation(c.config, OpUpdateOne, withProjectID(id))
+	return &ProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Project.
+func (c *ProjectClient) Delete() *ProjectDelete {
+	mutation := newProjectMutation(c.config, OpDelete)
+	return &ProjectDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a delete builder for the given entity.
+func (c *ProjectClient) DeleteOne(pr *Project) *ProjectDeleteOne {
+	return c.DeleteOneID(pr.ID)
+}
+
+// DeleteOneID returns a delete builder for the given id.
+func (c *ProjectClient) DeleteOneID(id int) *ProjectDeleteOne {
+	builder := c.Delete().Where(project.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ProjectDeleteOne{builder}
+}
+
+// Query returns a query builder for Project.
+func (c *ProjectClient) Query() *ProjectQuery {
+	return &ProjectQuery{config: c.config}
+}
+
+// Get returns a Project entity by its id.
+func (c *ProjectClient) Get(ctx context.Context, id int) (*Project, error) {
+	return c.Query().Where(project.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ProjectClient) GetX(ctx context.Context, id int) *Project {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryActivities queries the activities edge of a Project.
+func (c *ProjectClient) QueryActivities(pr *Project) *ActivityQuery {
+	query := &ActivityQuery{config: c.config}
+	query.path = func(ctx context.Context) (fromV *sql.Selector, _ error) {
+		id := pr.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(project.Table, project.FieldID, id),
+			sqlgraph.To(activity.Table, activity.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, project.ActivitiesTable, project.ActivitiesColumn),
+		)
+		fromV = sqlgraph.Neighbors(pr.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ProjectClient) Hooks() []Hook {
+	return c.hooks.Project
+}
+
+// TimesheetClient is a client for the Timesheet schema.
+type TimesheetClient struct {
+	config
+}
+
+// NewTimesheetClient returns a client for the Timesheet from the given config.
+func NewTimesheetClient(c config) *TimesheetClient {
+	return &TimesheetClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `timesheet.Hooks(f(g(h())))`.
+func (c *TimesheetClient) Use(hooks ...Hook) {
+	c.hooks.Timesheet = append(c.hooks.Timesheet, hooks...)
+}
+
+// Create returns a create builder for Timesheet.
+func (c *TimesheetClient) Create() *TimesheetCreate {
+	mutation := newTimesheetMutation(c.config, OpCreate)
+	return &TimesheetCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Timesheet entities.
+func (c *TimesheetClient) CreateBulk(builders ...*TimesheetCreate) *TimesheetCreateBulk {
+	return &TimesheetCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Timesheet.
+func (c *TimesheetClient) Update() *TimesheetUpdate {
+	mutation := newTimesheetMutation(c.config, OpUpdate)
+	return &TimesheetUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TimesheetClient) UpdateOne(t *Timesheet) *TimesheetUpdateOne {
+	mutation := newTimesheetMutation(c.config, OpUpdateOne, withTimesheet(t))
+	return &TimesheetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TimesheetClient) UpdateOneID(id int) *TimesheetUpdateOne {
+	mutation := newTimesheetMutation(c.config, OpUpdateOne, withTimesheetID(id))
+	return &TimesheetUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Timesheet.
+func (c *TimesheetClient) Delete() *TimesheetDelete {
+	mutation := newTimesheetMutation(c.config, OpDelete)
+	return &TimesheetDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a delete builder for the given entity.
+func (c *TimesheetClient) DeleteOne(t *Timesheet) *TimesheetDeleteOne {
+	return c.DeleteOneID(t.ID)
+}
+
+// DeleteOneID returns a delete builder for the given id.
+func (c *TimesheetClient) DeleteOneID(id int) *TimesheetDeleteOne {
+	builder := c.Delete().Where(timesheet.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TimesheetDeleteOne{builder}
+}
+
+// Query returns a query builder for Timesheet.
+func (c *TimesheetClient) Query() *TimesheetQuery {
+	return &TimesheetQuery{config: c.config}
+}
+
+// Get returns a Timesheet entity by its id.
+func (c *TimesheetClient) Get(ctx context.Context, id int) (*Timesheet, error) {
+	return c.Query().Where(timesheet.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TimesheetClient) GetX(ctx context.Context, id int) *Timesheet {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryActivity queries the activity edge of a Timesheet.
+func (c *TimesheetClient) QueryActivity(t *Timesheet) *ActivityQuery {
+	query := &ActivityQuery{config: c.config}
+	query.path = func(ctx context.Context) (fromV *sql.Selector, _ error) {
+		id := t.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(timesheet.Table, timesheet.FieldID, id),
+			sqlgraph.To(activity.Table, activity.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, timesheet.ActivityTable, timesheet.ActivityColumn),
+		)
+		fromV = sqlgraph.Neighbors(t.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *TimesheetClient) Hooks() []Hook {
+	return c.hooks.Timesheet
 }
 
 // UserClient is a client for the User schema.
@@ -162,7 +513,7 @@ func (c *UserClient) UpdateOne(u *User) *UserUpdateOne {
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *UserClient) UpdateOneID(id pulid.ID) *UserUpdateOne {
+func (c *UserClient) UpdateOneID(id int) *UserUpdateOne {
 	mutation := newUserMutation(c.config, OpUpdateOne, withUserID(id))
 	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
@@ -179,7 +530,7 @@ func (c *UserClient) DeleteOne(u *User) *UserDeleteOne {
 }
 
 // DeleteOneID returns a delete builder for the given id.
-func (c *UserClient) DeleteOneID(id pulid.ID) *UserDeleteOne {
+func (c *UserClient) DeleteOneID(id int) *UserDeleteOne {
 	builder := c.Delete().Where(user.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
@@ -192,12 +543,12 @@ func (c *UserClient) Query() *UserQuery {
 }
 
 // Get returns a User entity by its id.
-func (c *UserClient) Get(ctx context.Context, id pulid.ID) (*User, error) {
+func (c *UserClient) Get(ctx context.Context, id int) (*User, error) {
 	return c.Query().Where(user.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *UserClient) GetX(ctx context.Context, id pulid.ID) *User {
+func (c *UserClient) GetX(ctx context.Context, id int) *User {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -207,5 +558,6 @@ func (c *UserClient) GetX(ctx context.Context, id pulid.ID) *User {
 
 // Hooks returns the client hooks.
 func (c *UserClient) Hooks() []Hook {
-	return c.hooks.User
+	hooks := c.hooks.User
+	return append(hooks[:len(hooks):len(hooks)], user.Hooks[:]...)
 }

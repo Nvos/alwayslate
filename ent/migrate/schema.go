@@ -8,12 +8,69 @@ import (
 )
 
 var (
+	// ActivitiesColumns holds the columns for the "activities" table.
+	ActivitiesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "project_activities", Type: field.TypeInt, Nullable: true},
+	}
+	// ActivitiesTable holds the schema information for the "activities" table.
+	ActivitiesTable = &schema.Table{
+		Name:       "activities",
+		Columns:    ActivitiesColumns,
+		PrimaryKey: []*schema.Column{ActivitiesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "activities_projects_activities",
+				Columns:    []*schema.Column{ActivitiesColumns[2]},
+				RefColumns: []*schema.Column{ProjectsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+	}
+	// ProjectsColumns holds the columns for the "projects" table.
+	ProjectsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "name", Type: field.TypeString},
+	}
+	// ProjectsTable holds the schema information for the "projects" table.
+	ProjectsTable = &schema.Table{
+		Name:        "projects",
+		Columns:     ProjectsColumns,
+		PrimaryKey:  []*schema.Column{ProjectsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{},
+	}
+	// TimesheetsColumns holds the columns for the "timesheets" table.
+	TimesheetsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "ended_at", Type: field.TypeTime, Nullable: true},
+		{Name: "duration", Type: field.TypeInt64},
+		{Name: "activity_timesheets", Type: field.TypeInt, Nullable: true},
+	}
+	// TimesheetsTable holds the schema information for the "timesheets" table.
+	TimesheetsTable = &schema.Table{
+		Name:       "timesheets",
+		Columns:    TimesheetsColumns,
+		PrimaryKey: []*schema.Column{TimesheetsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "timesheets_activities_timesheets",
+				Columns:    []*schema.Column{TimesheetsColumns[4]},
+				RefColumns: []*schema.Column{ActivitiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString},
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "created_by", Type: field.TypeInt, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "updated_by", Type: field.TypeInt, Nullable: true},
 		{Name: "username", Type: field.TypeString, Unique: true},
 		{Name: "password", Type: field.TypeString},
-		{Name: "created_at", Type: field.TypeTime},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -24,9 +81,14 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ActivitiesTable,
+		ProjectsTable,
+		TimesheetsTable,
 		UsersTable,
 	}
 )
 
 func init() {
+	ActivitiesTable.ForeignKeys[0].RefTable = ProjectsTable
+	TimesheetsTable.ForeignKeys[0].RefTable = ActivitiesTable
 }

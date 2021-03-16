@@ -16,6 +16,12 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input model.CreateUse
 		Save(ctx)
 }
 
+func (r *mutationResolver) UpdateUser(ctx context.Context, input model.UpdateUserInput) (*ent.User, error) {
+	return r.Client.User.UpdateOneID(input.ID).
+		SetPassword(input.Password).
+		Save(ctx)
+}
+
 func (r *queryResolver) Users(ctx context.Context, after *ent.Cursor, first *int, before *ent.Cursor, last *int, orderBy *ent.UserOrder) (*ent.UserConnection, error) {
 	return r.Client.User.Query().
 		Paginate(ctx, after, first, before, last, ent.WithUserOrder(orderBy))

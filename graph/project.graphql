@@ -1,0 +1,12 @@
+type Project implements Node {
+    id: ID!
+    name: String!
+}
+
+input CreateProjectInput {
+    name: String!
+}
+
+extend type Mutation {
+    createProject(input: CreateProjectInput!): Project!
+}

@@ -46,7 +46,7 @@ autobind:
 models:
   ID:
     model:
-      - alwayslate/ent/schema/pulid.ID
+      - github.com/99designs/gqlgen/graphql.Int
   Node:
     model:
       - alwayslate/ent.Noder

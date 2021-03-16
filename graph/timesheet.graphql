@@ -1,0 +1,17 @@
+type Timesheet implements Node {
+    id: ID!
+    startedAt: Time
+    endedAt: Time
+    duration: Int!
+}
+
+input CreateTimesheetInput {
+    activityId: ID!
+    startedAt: Time
+    endedAt: Time
+    duration: Int!
+}
+
+extend type Mutation {
+    createTimesheet(input: CreateTimesheetInput!): Timesheet!
+}

@@ -9,6 +9,70 @@ import (
 )
 
 // CollectFields tells the query-builder to eagerly load connected nodes by resolver context.
+func (a *ActivityQuery) CollectFields(ctx context.Context, satisfies ...string) *ActivityQuery {
+	if fc := graphql.GetFieldContext(ctx); fc != nil {
+		a = a.collectField(graphql.GetOperationContext(ctx), fc.Field, satisfies...)
+	}
+	return a
+}
+
+func (a *ActivityQuery) collectField(ctx *graphql.OperationContext, field graphql.CollectedField, satisfies ...string) *ActivityQuery {
+ 	for _, field := range graphql.CollectFields(ctx, field.Selections, satisfies) {
+		switch field.Name {
+		case "project":
+			a = a.WithProject(func(query *ProjectQuery) {
+				query.collectField(ctx, field)
+			})
+		case "timesheets":
+			a = a.WithTimesheets(func(query *TimesheetQuery) {
+				query.collectField(ctx, field)
+			})
+		}
+	}
+	return a
+}
+
+// CollectFields tells the query-builder to eagerly load connected nodes by resolver context.
+func (pr *ProjectQuery) CollectFields(ctx context.Context, satisfies ...string) *ProjectQuery {
+	if fc := graphql.GetFieldContext(ctx); fc != nil {
+		pr = pr.collectField(graphql.GetOperationContext(ctx), fc.Field, satisfies...)
+	}
+	return pr
+}
+
+func (pr *ProjectQuery) collectField(ctx *graphql.OperationContext, field graphql.CollectedField, satisfies ...string) *ProjectQuery {
+	for _, field := range graphql.CollectFields(ctx, field.Selections, satisfies) {
+		switch field.Name {
+		case "activities":
+			pr = pr.WithActivities(func(query *ActivityQuery) {
+				query.collectField(ctx, field)
+			})
+		}
+	}
+	return pr
+}
+
+// CollectFields tells the query-builder to eagerly load connected nodes by resolver context.
+func (t *TimesheetQuery) CollectFields(ctx context.Context, satisfies ...string) *TimesheetQuery {
+	if fc := graphql.GetFieldContext(ctx); fc != nil {
+		t = t.collectField(graphql.GetOperationContext(ctx), fc.Field, satisfies...)
+	}
+	return t
+}
+
+func (t *TimesheetQuery) collectField(ctx *graphql.OperationContext, field graphql.CollectedField, satisfies ...string) *TimesheetQuery {
+	for _, field := range graphql.CollectFields(ctx, field.Selections, satisfies) {
+		switch field.Name {
+		case "activity":
+			t = t.WithActivity(func(query *ActivityQuery) {
+				query.collectField(ctx, field)
+			})
+		}
+	}
+	return t
+}
+
+// CollectFields tells the query-builder to eagerly load connected nodes by resolver context.
 func (u *UserQuery) CollectFields(ctx context.Context, satisfies ...string) *UserQuery {
 	if fc := graphql.GetFieldContext(ctx); fc != nil {
 		u = u.collectField(graphql.GetOperationContext(ctx), fc.Field, satisfies...)

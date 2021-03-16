@@ -3,7 +3,9 @@
 package ent
 
 import (
-	"alwayslate/ent/schema/pulid"
+	"alwayslate/ent/activity"
+	"alwayslate/ent/project"
+	"alwayslate/ent/timesheet"
 	"alwayslate/ent/user"
 	"context"
 	"encoding/base64"
@@ -145,8 +147,8 @@ type PageInfo struct {
 
 // Cursor of an edge type.
 type Cursor struct {
-	ID    pulid.ID `msgpack:"i"`
-	Value Value    `msgpack:"v,omitempty"`
+	ID    int   `msgpack:"i"`
+	Value Value `msgpack:"v,omitempty"`
 }
 
 // MarshalGQL implements graphql.Marshaler interface.
@@ -232,6 +234,696 @@ const (
 	pageInfoField   = "pageInfo"
 	totalCountField = "totalCount"
 )
+
+// ActivityEdge is the edge representation of Activity.
+type ActivityEdge struct {
+	Node   *Activity `json:"node"`
+	Cursor Cursor    `json:"cursor"`
+}
+
+// ActivityConnection is the connection containing edges to Activity.
+type ActivityConnection struct {
+	Edges      []*ActivityEdge `json:"edges"`
+	PageInfo   PageInfo        `json:"pageInfo"`
+	TotalCount int             `json:"totalCount"`
+}
+
+// ActivityPaginateOption enables pagination customization.
+type ActivityPaginateOption func(*activityPager) error
+
+// WithActivityOrder configures pagination ordering.
+func WithActivityOrder(order *ActivityOrder) ActivityPaginateOption {
+	if order == nil {
+		order = DefaultActivityOrder
+	}
+	o := *order
+	return func(pager *activityPager) error {
+		if err := o.Direction.Validate(); err != nil {
+			return err
+		}
+		if o.Field == nil {
+			o.Field = DefaultActivityOrder.Field
+		}
+		pager.order = &o
+		return nil
+	}
+}
+
+// WithActivityFilter configures pagination filter.
+func WithActivityFilter(filter func(*ActivityQuery) (*ActivityQuery, error)) ActivityPaginateOption {
+	return func(pager *activityPager) error {
+		if filter == nil {
+			return errors.New("ActivityQuery filter cannot be nil")
+		}
+		pager.filter = filter
+		return nil
+	}
+}
+
+type activityPager struct {
+	order  *ActivityOrder
+	filter func(*ActivityQuery) (*ActivityQuery, error)
+}
+
+func newActivityPager(opts []ActivityPaginateOption) (*activityPager, error) {
+	pager := &activityPager{}
+	for _, opt := range opts {
+		if err := opt(pager); err != nil {
+			return nil, err
+		}
+	}
+	if pager.order == nil {
+		pager.order = DefaultActivityOrder
+	}
+	return pager, nil
+}
+
+func (p *activityPager) applyFilter(query *ActivityQuery) (*ActivityQuery, error) {
+	if p.filter != nil {
+		return p.filter(query)
+	}
+	return query, nil
+}
+
+func (p *activityPager) toCursor(a *Activity) Cursor {
+	return p.order.Field.toCursor(a)
+}
+
+func (p *activityPager) applyCursors(query *ActivityQuery, after, before *Cursor) *ActivityQuery {
+	for _, predicate := range cursorsToPredicates(
+		p.order.Direction, after, before,
+		p.order.Field.field, DefaultActivityOrder.Field.field,
+	) {
+		query = query.Where(predicate)
+	}
+	return query
+}
+
+func (p *activityPager) applyOrder(query *ActivityQuery, reverse bool) *ActivityQuery {
+	direction := p.order.Direction
+	if reverse {
+		direction = direction.reverse()
+	}
+	query = query.Order(direction.orderFunc(p.order.Field.field))
+	if p.order.Field != DefaultActivityOrder.Field {
+		query = query.Order(direction.orderFunc(DefaultActivityOrder.Field.field))
+	}
+	return query
+}
+
+// Paginate executes the query and returns a relay based cursor connection to Activity.
+func (a *ActivityQuery) Paginate(
+	ctx context.Context, after *Cursor, first *int,
+	before *Cursor, last *int, opts ...ActivityPaginateOption,
+) (*ActivityConnection, error) {
+	if err := validateFirstLast(first, last); err != nil {
+		return nil, err
+	}
+	pager, err := newActivityPager(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if a, err = pager.applyFilter(a); err != nil {
+		return nil, err
+	}
+
+	conn := &ActivityConnection{Edges: []*ActivityEdge{}}
+	if !hasCollectedField(ctx, edgesField) ||
+		first != nil && *first == 0 ||
+		last != nil && *last == 0 {
+		if hasCollectedField(ctx, totalCountField) ||
+			hasCollectedField(ctx, pageInfoField) {
+			count, err := a.Count(ctx)
+			if err != nil {
+				return nil, err
+			}
+			conn.TotalCount = count
+			conn.PageInfo.HasNextPage = first != nil && count > 0
+			conn.PageInfo.HasPreviousPage = last != nil && count > 0
+		}
+		return conn, nil
+	}
+
+	if (after != nil || first != nil || before != nil || last != nil) &&
+		hasCollectedField(ctx, totalCountField) {
+		count, err := a.Clone().Count(ctx)
+		if err != nil {
+			return nil, err
+		}
+		conn.TotalCount = count
+	}
+
+	a = pager.applyCursors(a, after, before)
+	a = pager.applyOrder(a, last != nil)
+	var limit int
+	if first != nil {
+		limit = *first + 1
+	} else if last != nil {
+		limit = *last + 1
+	}
+	if limit > 0 {
+		a = a.Limit(limit)
+	}
+
+	if field := getCollectedField(ctx, edgesField, nodeField); field != nil {
+		a = a.collectField(graphql.GetOperationContext(ctx), *field)
+	}
+
+	nodes, err := a.All(ctx)
+	if err != nil || len(nodes) == 0 {
+		return conn, err
+	}
+
+	if len(nodes) == limit {
+		conn.PageInfo.HasNextPage = first != nil
+		conn.PageInfo.HasPreviousPage = last != nil
+		nodes = nodes[:len(nodes)-1]
+	}
+
+	var nodeAt func(int) *Activity
+	if last != nil {
+		n := len(nodes) - 1
+		nodeAt = func(i int) *Activity {
+			return nodes[n-i]
+		}
+	} else {
+		nodeAt = func(i int) *Activity {
+			return nodes[i]
+		}
+	}
+
+	conn.Edges = make([]*ActivityEdge, len(nodes))
+	for i := range nodes {
+		node := nodeAt(i)
+		conn.Edges[i] = &ActivityEdge{
+			Node:   node,
+			Cursor: pager.toCursor(node),
+		}
+	}
+
+	conn.PageInfo.StartCursor = &conn.Edges[0].Cursor
+	conn.PageInfo.EndCursor = &conn.Edges[len(conn.Edges)-1].Cursor
+	if conn.TotalCount == 0 {
+		conn.TotalCount = len(nodes)
+	}
+
+	return conn, nil
+}
+
+// ActivityOrderField defines the ordering field of Activity.
+type ActivityOrderField struct {
+	field    string
+	toCursor func(*Activity) Cursor
+}
+
+// ActivityOrder defines the ordering of Activity.
+type ActivityOrder struct {
+	Direction OrderDirection      `json:"direction"`
+	Field     *ActivityOrderField `json:"field"`
+}
+
+// DefaultActivityOrder is the default ordering of Activity.
+var DefaultActivityOrder = &ActivityOrder{
+	Direction: OrderDirectionAsc,
+	Field: &ActivityOrderField{
+		field: activity.FieldID,
+		toCursor: func(a *Activity) Cursor {
+			return Cursor{ID: a.ID}
+		},
+	},
+}
+
+// ToEdge converts Activity into ActivityEdge.
+func (a *Activity) ToEdge(order *ActivityOrder) *ActivityEdge {
+	if order == nil {
+		order = DefaultActivityOrder
+	}
+	return &ActivityEdge{
+		Node:   a,
+		Cursor: order.Field.toCursor(a),
+	}
+}
+
+// ProjectEdge is the edge representation of Project.
+type ProjectEdge struct {
+	Node   *Project `json:"node"`
+	Cursor Cursor   `json:"cursor"`
+}
+
+// ProjectConnection is the connection containing edges to Project.
+type ProjectConnection struct {
+	Edges      []*ProjectEdge `json:"edges"`
+	PageInfo   PageInfo       `json:"pageInfo"`
+	TotalCount int            `json:"totalCount"`
+}
+
+// ProjectPaginateOption enables pagination customization.
+type ProjectPaginateOption func(*projectPager) error
+
+// WithProjectOrder configures pagination ordering.
+func WithProjectOrder(order *ProjectOrder) ProjectPaginateOption {
+	if order == nil {
+		order = DefaultProjectOrder
+	}
+	o := *order
+	return func(pager *projectPager) error {
+		if err := o.Direction.Validate(); err != nil {
+			return err
+		}
+		if o.Field == nil {
+			o.Field = DefaultProjectOrder.Field
+		}
+		pager.order = &o
+		return nil
+	}
+}
+
+// WithProjectFilter configures pagination filter.
+func WithProjectFilter(filter func(*ProjectQuery) (*ProjectQuery, error)) ProjectPaginateOption {
+	return func(pager *projectPager) error {
+		if filter == nil {
+			return errors.New("ProjectQuery filter cannot be nil")
+		}
+		pager.filter = filter
+		return nil
+	}
+}
+
+type projectPager struct {
+	order  *ProjectOrder
+	filter func(*ProjectQuery) (*ProjectQuery, error)
+}
+
+func newProjectPager(opts []ProjectPaginateOption) (*projectPager, error) {
+	pager := &projectPager{}
+	for _, opt := range opts {
+		if err := opt(pager); err != nil {
+			return nil, err
+		}
+	}
+	if pager.order == nil {
+		pager.order = DefaultProjectOrder
+	}
+	return pager, nil
+}
+
+func (p *projectPager) applyFilter(query *ProjectQuery) (*ProjectQuery, error) {
+	if p.filter != nil {
+		return p.filter(query)
+	}
+	return query, nil
+}
+
+func (p *projectPager) toCursor(pr *Project) Cursor {
+	return p.order.Field.toCursor(pr)
+}
+
+func (p *projectPager) applyCursors(query *ProjectQuery, after, before *Cursor) *ProjectQuery {
+	for _, predicate := range cursorsToPredicates(
+		p.order.Direction, after, before,
+		p.order.Field.field, DefaultProjectOrder.Field.field,
+	) {
+		query = query.Where(predicate)
+	}
+	return query
+}
+
+func (p *projectPager) applyOrder(query *ProjectQuery, reverse bool) *ProjectQuery {
+	direction := p.order.Direction
+	if reverse {
+		direction = direction.reverse()
+	}
+	query = query.Order(direction.orderFunc(p.order.Field.field))
+	if p.order.Field != DefaultProjectOrder.Field {
+		query = query.Order(direction.orderFunc(DefaultProjectOrder.Field.field))
+	}
+	return query
+}
+
+// Paginate executes the query and returns a relay based cursor connection to Project.
+func (pr *ProjectQuery) Paginate(
+	ctx context.Context, after *Cursor, first *int,
+	before *Cursor, last *int, opts ...ProjectPaginateOption,
+) (*ProjectConnection, error) {
+	if err := validateFirstLast(first, last); err != nil {
+		return nil, err
+	}
+	pager, err := newProjectPager(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if pr, err = pager.applyFilter(pr); err != nil {
+		return nil, err
+	}
+
+	conn := &ProjectConnection{Edges: []*ProjectEdge{}}
+	if !hasCollectedField(ctx, edgesField) ||
+		first != nil && *first == 0 ||
+		last != nil && *last == 0 {
+		if hasCollectedField(ctx, totalCountField) ||
+			hasCollectedField(ctx, pageInfoField) {
+			count, err := pr.Count(ctx)
+			if err != nil {
+				return nil, err
+			}
+			conn.TotalCount = count
+			conn.PageInfo.HasNextPage = first != nil && count > 0
+			conn.PageInfo.HasPreviousPage = last != nil && count > 0
+		}
+		return conn, nil
+	}
+
+	if (after != nil || first != nil || before != nil || last != nil) &&
+		hasCollectedField(ctx, totalCountField) {
+		count, err := pr.Clone().Count(ctx)
+		if err != nil {
+			return nil, err
+		}
+		conn.TotalCount = count
+	}
+
+	pr = pager.applyCursors(pr, after, before)
+	pr = pager.applyOrder(pr, last != nil)
+	var limit int
+	if first != nil {
+		limit = *first + 1
+	} else if last != nil {
+		limit = *last + 1
+	}
+	if limit > 0 {
+		pr = pr.Limit(limit)
+	}
+
+	if field := getCollectedField(ctx, edgesField, nodeField); field != nil {
+		pr = pr.collectField(graphql.GetOperationContext(ctx), *field)
+	}
+
+	nodes, err := pr.All(ctx)
+	if err != nil || len(nodes) == 0 {
+		return conn, err
+	}
+
+	if len(nodes) == limit {
+		conn.PageInfo.HasNextPage = first != nil
+		conn.PageInfo.HasPreviousPage = last != nil
+		nodes = nodes[:len(nodes)-1]
+	}
+
+	var nodeAt func(int) *Project
+	if last != nil {
+		n := len(nodes) - 1
+		nodeAt = func(i int) *Project {
+			return nodes[n-i]
+		}
+	} else {
+		nodeAt = func(i int) *Project {
+			return nodes[i]
+		}
+	}
+
+	conn.Edges = make([]*ProjectEdge, len(nodes))
+	for i := range nodes {
+		node := nodeAt(i)
+		conn.Edges[i] = &ProjectEdge{
+			Node:   node,
+			Cursor: pager.toCursor(node),
+		}
+	}
+
+	conn.PageInfo.StartCursor = &conn.Edges[0].Cursor
+	conn.PageInfo.EndCursor = &conn.Edges[len(conn.Edges)-1].Cursor
+	if conn.TotalCount == 0 {
+		conn.TotalCount = len(nodes)
+	}
+
+	return conn, nil
+}
+
+// ProjectOrderField defines the ordering field of Project.
+type ProjectOrderField struct {
+	field    string
+	toCursor func(*Project) Cursor
+}
+
+// ProjectOrder defines the ordering of Project.
+type ProjectOrder struct {
+	Direction OrderDirection     `json:"direction"`
+	Field     *ProjectOrderField `json:"field"`
+}
+
+// DefaultProjectOrder is the default ordering of Project.
+var DefaultProjectOrder = &ProjectOrder{
+	Direction: OrderDirectionAsc,
+	Field: &ProjectOrderField{
+		field: project.FieldID,
+		toCursor: func(pr *Project) Cursor {
+			return Cursor{ID: pr.ID}
+		},
+	},
+}
+
+// ToEdge converts Project into ProjectEdge.
+func (pr *Project) ToEdge(order *ProjectOrder) *ProjectEdge {
+	if order == nil {
+		order = DefaultProjectOrder
+	}
+	return &ProjectEdge{
+		Node:   pr,
+		Cursor: order.Field.toCursor(pr),
+	}
+}
+
+// TimesheetEdge is the edge representation of Timesheet.
+type TimesheetEdge struct {
+	Node   *Timesheet `json:"node"`
+	Cursor Cursor     `json:"cursor"`
+}
+
+// TimesheetConnection is the connection containing edges to Timesheet.
+type TimesheetConnection struct {
+	Edges      []*TimesheetEdge `json:"edges"`
+	PageInfo   PageInfo         `json:"pageInfo"`
+	TotalCount int              `json:"totalCount"`
+}
+
+// TimesheetPaginateOption enables pagination customization.
+type TimesheetPaginateOption func(*timesheetPager) error
+
+// WithTimesheetOrder configures pagination ordering.
+func WithTimesheetOrder(order *TimesheetOrder) TimesheetPaginateOption {
+	if order == nil {
+		order = DefaultTimesheetOrder
+	}
+	o := *order
+	return func(pager *timesheetPager) error {
+		if err := o.Direction.Validate(); err != nil {
+			return err
+		}
+		if o.Field == nil {
+			o.Field = DefaultTimesheetOrder.Field
+		}
+		pager.order = &o
+		return nil
+	}
+}
+
+// WithTimesheetFilter configures pagination filter.
+func WithTimesheetFilter(filter func(*TimesheetQuery) (*TimesheetQuery, error)) TimesheetPaginateOption {
+	return func(pager *timesheetPager) error {
+		if filter == nil {
+			return errors.New("TimesheetQuery filter cannot be nil")
+		}
+		pager.filter = filter
+		return nil
+	}
+}
+
+type timesheetPager struct {
+	order  *TimesheetOrder
+	filter func(*TimesheetQuery) (*TimesheetQuery, error)
+}
+
+func newTimesheetPager(opts []TimesheetPaginateOption) (*timesheetPager, error) {
+	pager := &timesheetPager{}
+	for _, opt := range opts {
+		if err := opt(pager); err != nil {
+			return nil, err
+		}
+	}
+	if pager.order == nil {
+		pager.order = DefaultTimesheetOrder
+	}
+	return pager, nil
+}
+
+func (p *timesheetPager) applyFilter(query *TimesheetQuery) (*TimesheetQuery, error) {
+	if p.filter != nil {
+		return p.filter(query)
+	}
+	return query, nil
+}
+
+func (p *timesheetPager) toCursor(t *Timesheet) Cursor {
+	return p.order.Field.toCursor(t)
+}
+
+func (p *timesheetPager) applyCursors(query *TimesheetQuery, after, before *Cursor) *TimesheetQuery {
+	for _, predicate := range cursorsToPredicates(
+		p.order.Direction, after, before,
+		p.order.Field.field, DefaultTimesheetOrder.Field.field,
+	) {
+		query = query.Where(predicate)
+	}
+	return query
+}
+
+func (p *timesheetPager) applyOrder(query *TimesheetQuery, reverse bool) *TimesheetQuery {
+	direction := p.order.Direction
+	if reverse {
+		direction = direction.reverse()
+	}
+	query = query.Order(direction.orderFunc(p.order.Field.field))
+	if p.order.Field != DefaultTimesheetOrder.Field {
+		query = query.Order(direction.orderFunc(DefaultTimesheetOrder.Field.field))
+	}
+	return query
+}
+
+// Paginate executes the query and returns a relay based cursor connection to Timesheet.
+func (t *TimesheetQuery) Paginate(
+	ctx context.Context, after *Cursor, first *int,
+	before *Cursor, last *int, opts ...TimesheetPaginateOption,
+) (*TimesheetConnection, error) {
+	if err := validateFirstLast(first, last); err != nil {
+		return nil, err
+	}
+	pager, err := newTimesheetPager(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	if t, err = pager.applyFilter(t); err != nil {
+		return nil, err
+	}
+
+	conn := &TimesheetConnection{Edges: []*TimesheetEdge{}}
+	if !hasCollectedField(ctx, edgesField) ||
+		first != nil && *first == 0 ||
+		last != nil && *last == 0 {
+		if hasCollectedField(ctx, totalCountField) ||
+			hasCollectedField(ctx, pageInfoField) {
+			count, err := t.Count(ctx)
+			if err != nil {
+				return nil, err
+			}
+			conn.TotalCount = count
+			conn.PageInfo.HasNextPage = first != nil && count > 0
+			conn.PageInfo.HasPreviousPage = last != nil && count > 0
+		}
+		return conn, nil
+	}
+
+	if (after != nil || first != nil || before != nil || last != nil) &&
+		hasCollectedField(ctx, totalCountField) {
+		count, err := t.Clone().Count(ctx)
+		if err != nil {
+			return nil, err
+		}
+		conn.TotalCount = count
+	}
+
+	t = pager.applyCursors(t, after, before)
+	t = pager.applyOrder(t, last != nil)
+	var limit int
+	if first != nil {
+		limit = *first + 1
+	} else if last != nil {
+		limit = *last + 1
+	}
+	if limit > 0 {
+		t = t.Limit(limit)
+	}
+
+	if field := getCollectedField(ctx, edgesField, nodeField); field != nil {
+		t = t.collectField(graphql.GetOperationContext(ctx), *field)
+	}
+
+	nodes, err := t.All(ctx)
+	if err != nil || len(nodes) == 0 {
+		return conn, err
+	}
+
+	if len(nodes) == limit {
+		conn.PageInfo.HasNextPage = first != nil
+		conn.PageInfo.HasPreviousPage = last != nil
+		nodes = nodes[:len(nodes)-1]
+	}
+
+	var nodeAt func(int) *Timesheet
+	if last != nil {
+		n := len(nodes) - 1
+		nodeAt = func(i int) *Timesheet {
+			return nodes[n-i]
+		}
+	} else {
+		nodeAt = func(i int) *Timesheet {
+			return nodes[i]
+		}
+	}
+
+	conn.Edges = make([]*TimesheetEdge, len(nodes))
+	for i := range nodes {
+		node := nodeAt(i)
+		conn.Edges[i] = &TimesheetEdge{
+			Node:   node,
+			Cursor: pager.toCursor(node),
+		}
+	}
+
+	conn.PageInfo.StartCursor = &conn.Edges[0].Cursor
+	conn.PageInfo.EndCursor = &conn.Edges[len(conn.Edges)-1].Cursor
+	if conn.TotalCount == 0 {
+		conn.TotalCount = len(nodes)
+	}
+
+	return conn, nil
+}
+
+// TimesheetOrderField defines the ordering field of Timesheet.
+type TimesheetOrderField struct {
+	field    string
+	toCursor func(*Timesheet) Cursor
+}
+
+// TimesheetOrder defines the ordering of Timesheet.
+type TimesheetOrder struct {
+	Direction OrderDirection       `json:"direction"`
+	Field     *TimesheetOrderField `json:"field"`
+}
+
+// DefaultTimesheetOrder is the default ordering of Timesheet.
+var DefaultTimesheetOrder = &TimesheetOrder{
+	Direction: OrderDirectionAsc,
+	Field: &TimesheetOrderField{
+		field: timesheet.FieldID,
+		toCursor: func(t *Timesheet) Cursor {
+			return Cursor{ID: t.ID}
+		},
+	},
+}
+
+// ToEdge converts Timesheet into TimesheetEdge.
+func (t *Timesheet) ToEdge(order *TimesheetOrder) *TimesheetEdge {
+	if order == nil {
+		order = DefaultTimesheetOrder
+	}
+	return &TimesheetEdge{
+		Node:   t,
+		Cursor: order.Field.toCursor(t),
+	}
+}
 
 // UserEdge is the edge representation of User.
 type UserEdge struct {
@@ -440,16 +1132,6 @@ var (
 			}
 		},
 	}
-	// UserOrderFieldCreatedAt orders User by created_at.
-	UserOrderFieldCreatedAt = &UserOrderField{
-		field: user.FieldCreatedAt,
-		toCursor: func(u *User) Cursor {
-			return Cursor{
-				ID:    u.ID,
-				Value: u.CreatedAt,
-			}
-		},
-	}
 )
 
 // String implement fmt.Stringer interface.
@@ -458,8 +1140,6 @@ func (f UserOrderField) String() string {
 	switch f.field {
 	case user.FieldUsername:
 		str = "USERNAME"
-	case user.FieldCreatedAt:
-		str = "CREATED_AT"
 	}
 	return str
 }
@@ -478,8 +1158,6 @@ func (f *UserOrderField) UnmarshalGQL(v interface{}) error {
 	switch str {
 	case "USERNAME":
 		*f = *UserOrderFieldUsername
-	case "CREATED_AT":
-		*f = *UserOrderFieldCreatedAt
 	default:
 		return fmt.Errorf("%s is not a valid UserOrderField", str)
 	}

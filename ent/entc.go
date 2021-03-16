@@ -12,14 +12,14 @@ import (
 
 func main() {
 	templates := entgql.AllTemplates
-
-	templates = append(templates, gen.MustParse(
-		gen.NewTemplate("pulid.tmpl").ParseFiles("./schema/pulid/template/pulid.tmpl")),
-	)
+	opts := []entc.Option{
+		entc.FeatureNames("privacy"),
+		entc.FeatureNames("entql"),
+	}
 
 	err := entc.Generate("./schema", &gen.Config{
 		Templates: templates,
-	})
+	}, opts...)
 
 	if err != nil {
 		log.Fatalf("running ent codegen: %v", err)

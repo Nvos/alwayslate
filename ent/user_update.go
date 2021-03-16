@@ -7,6 +7,7 @@ import (
 	"alwayslate/ent/user"
 	"context"
 	"fmt"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
@@ -23,6 +24,66 @@ type UserUpdate struct {
 // Where adds a new predicate for the UserUpdate builder.
 func (uu *UserUpdate) Where(ps ...predicate.User) *UserUpdate {
 	uu.mutation.predicates = append(uu.mutation.predicates, ps...)
+	return uu
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (uu *UserUpdate) SetCreatedBy(i int) *UserUpdate {
+	uu.mutation.ResetCreatedBy()
+	uu.mutation.SetCreatedBy(i)
+	return uu
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableCreatedBy(i *int) *UserUpdate {
+	if i != nil {
+		uu.SetCreatedBy(*i)
+	}
+	return uu
+}
+
+// AddCreatedBy adds i to the "created_by" field.
+func (uu *UserUpdate) AddCreatedBy(i int) *UserUpdate {
+	uu.mutation.AddCreatedBy(i)
+	return uu
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (uu *UserUpdate) ClearCreatedBy() *UserUpdate {
+	uu.mutation.ClearCreatedBy()
+	return uu
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (uu *UserUpdate) SetUpdatedAt(t time.Time) *UserUpdate {
+	uu.mutation.SetUpdatedAt(t)
+	return uu
+}
+
+// SetUpdatedBy sets the "updated_by" field.
+func (uu *UserUpdate) SetUpdatedBy(i int) *UserUpdate {
+	uu.mutation.ResetUpdatedBy()
+	uu.mutation.SetUpdatedBy(i)
+	return uu
+}
+
+// SetNillableUpdatedBy sets the "updated_by" field if the given value is not nil.
+func (uu *UserUpdate) SetNillableUpdatedBy(i *int) *UserUpdate {
+	if i != nil {
+		uu.SetUpdatedBy(*i)
+	}
+	return uu
+}
+
+// AddUpdatedBy adds i to the "updated_by" field.
+func (uu *UserUpdate) AddUpdatedBy(i int) *UserUpdate {
+	uu.mutation.AddUpdatedBy(i)
+	return uu
+}
+
+// ClearUpdatedBy clears the value of the "updated_by" field.
+func (uu *UserUpdate) ClearUpdatedBy() *UserUpdate {
+	uu.mutation.ClearUpdatedBy()
 	return uu
 }
 
@@ -43,6 +104,7 @@ func (uu *UserUpdate) Save(ctx context.Context) (int, error) {
 		err      error
 		affected int
 	)
+	uu.defaults()
 	if len(uu.hooks) == 0 {
 		affected, err = uu.sqlSave(ctx)
 	} else {
@@ -88,13 +150,21 @@ func (uu *UserUpdate) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (uu *UserUpdate) defaults() {
+	if _, ok := uu.mutation.UpdatedAt(); !ok {
+		v := user.UpdateDefaultUpdatedAt()
+		uu.mutation.SetUpdatedAt(v)
+	}
+}
+
 func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
 			ID: &sqlgraph.FieldSpec{
-				Type:   field.TypeString,
+				Type:   field.TypeInt,
 				Column: user.FieldID,
 			},
 		},
@@ -105,6 +175,53 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := uu.mutation.CreatedBy(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldCreatedBy,
+		})
+	}
+	if value, ok := uu.mutation.AddedCreatedBy(); ok {
+		_spec.Fields.Add = append(_spec.Fields.Add, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldCreatedBy,
+		})
+	}
+	if uu.mutation.CreatedByCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Column: user.FieldCreatedBy,
+		})
+	}
+	if value, ok := uu.mutation.UpdatedAt(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeTime,
+			Value:  value,
+			Column: user.FieldUpdatedAt,
+		})
+	}
+	if value, ok := uu.mutation.UpdatedBy(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldUpdatedBy,
+		})
+	}
+	if value, ok := uu.mutation.AddedUpdatedBy(); ok {
+		_spec.Fields.Add = append(_spec.Fields.Add, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldUpdatedBy,
+		})
+	}
+	if uu.mutation.UpdatedByCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Column: user.FieldUpdatedBy,
+		})
 	}
 	if value, ok := uu.mutation.Password(); ok {
 		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
@@ -131,6 +248,66 @@ type UserUpdateOne struct {
 	mutation *UserMutation
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (uuo *UserUpdateOne) SetCreatedBy(i int) *UserUpdateOne {
+	uuo.mutation.ResetCreatedBy()
+	uuo.mutation.SetCreatedBy(i)
+	return uuo
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableCreatedBy(i *int) *UserUpdateOne {
+	if i != nil {
+		uuo.SetCreatedBy(*i)
+	}
+	return uuo
+}
+
+// AddCreatedBy adds i to the "created_by" field.
+func (uuo *UserUpdateOne) AddCreatedBy(i int) *UserUpdateOne {
+	uuo.mutation.AddCreatedBy(i)
+	return uuo
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (uuo *UserUpdateOne) ClearCreatedBy() *UserUpdateOne {
+	uuo.mutation.ClearCreatedBy()
+	return uuo
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (uuo *UserUpdateOne) SetUpdatedAt(t time.Time) *UserUpdateOne {
+	uuo.mutation.SetUpdatedAt(t)
+	return uuo
+}
+
+// SetUpdatedBy sets the "updated_by" field.
+func (uuo *UserUpdateOne) SetUpdatedBy(i int) *UserUpdateOne {
+	uuo.mutation.ResetUpdatedBy()
+	uuo.mutation.SetUpdatedBy(i)
+	return uuo
+}
+
+// SetNillableUpdatedBy sets the "updated_by" field if the given value is not nil.
+func (uuo *UserUpdateOne) SetNillableUpdatedBy(i *int) *UserUpdateOne {
+	if i != nil {
+		uuo.SetUpdatedBy(*i)
+	}
+	return uuo
+}
+
+// AddUpdatedBy adds i to the "updated_by" field.
+func (uuo *UserUpdateOne) AddUpdatedBy(i int) *UserUpdateOne {
+	uuo.mutation.AddUpdatedBy(i)
+	return uuo
+}
+
+// ClearUpdatedBy clears the value of the "updated_by" field.
+func (uuo *UserUpdateOne) ClearUpdatedBy() *UserUpdateOne {
+	uuo.mutation.ClearUpdatedBy()
+	return uuo
+}
+
 // SetPassword sets the "password" field.
 func (uuo *UserUpdateOne) SetPassword(s string) *UserUpdateOne {
 	uuo.mutation.SetPassword(s)
@@ -148,6 +325,7 @@ func (uuo *UserUpdateOne) Save(ctx context.Context) (*User, error) {
 		err  error
 		node *User
 	)
+	uuo.defaults()
 	if len(uuo.hooks) == 0 {
 		node, err = uuo.sqlSave(ctx)
 	} else {
@@ -193,13 +371,21 @@ func (uuo *UserUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
+// defaults sets the default values of the builder before save.
+func (uuo *UserUpdateOne) defaults() {
+	if _, ok := uuo.mutation.UpdatedAt(); !ok {
+		v := user.UpdateDefaultUpdatedAt()
+		uuo.mutation.SetUpdatedAt(v)
+	}
+}
+
 func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   user.Table,
 			Columns: user.Columns,
 			ID: &sqlgraph.FieldSpec{
-				Type:   field.TypeString,
+				Type:   field.TypeInt,
 				Column: user.FieldID,
 			},
 		},
@@ -215,6 +401,53 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) 
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := uuo.mutation.CreatedBy(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldCreatedBy,
+		})
+	}
+	if value, ok := uuo.mutation.AddedCreatedBy(); ok {
+		_spec.Fields.Add = append(_spec.Fields.Add, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldCreatedBy,
+		})
+	}
+	if uuo.mutation.CreatedByCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Column: user.FieldCreatedBy,
+		})
+	}
+	if value, ok := uuo.mutation.UpdatedAt(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeTime,
+			Value:  value,
+			Column: user.FieldUpdatedAt,
+		})
+	}
+	if value, ok := uuo.mutation.UpdatedBy(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldUpdatedBy,
+		})
+	}
+	if value, ok := uuo.mutation.AddedUpdatedBy(); ok {
+		_spec.Fields.Add = append(_spec.Fields.Add, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Value:  value,
+			Column: user.FieldUpdatedBy,
+		})
+	}
+	if uuo.mutation.UpdatedByCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeInt,
+			Column: user.FieldUpdatedBy,
+		})
 	}
 	if value, ok := uuo.mutation.Password(); ok {
 		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
